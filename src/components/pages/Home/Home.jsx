@@ -132,12 +132,12 @@ const Home = () => {
                 </h1>
                 <p className="text-lg text-gray-600 mb-8">
                   Ofrece a tus usuarios una forma rápida y segura de iniciar
-                  sesión con su rostro. Integración sencilla con Django.
+                  sesión con su rostro. Integración sencilla con Django. 
                 </p>
                 <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-                  <button className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
+                  <Link to="/auth" className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
                     Prueba Gratuita
-                  </button>
+                  </Link>
                   <button className="px-6 py-3 bg-white text-indigo-600 font-medium rounded-md shadow-sm border border-indigo-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150">
                     Ver Documentación
                   </button>

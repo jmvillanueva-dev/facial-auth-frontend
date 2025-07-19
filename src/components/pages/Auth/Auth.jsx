@@ -38,6 +38,7 @@ const Auth = () => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const [hasValidPhoto, setHasValidPhoto] = useState(false);
   const [imageQuality, setImageQuality] = useState({
     hasGoodLighting: false,
     isCentered: false,
@@ -45,6 +46,7 @@ const Auth = () => {
   });
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const streamRef = useRef(null);
   const navigate = useNavigate();
 
   const {
@@ -56,7 +58,6 @@ const Auth = () => {
     watch,
   } = useForm();
 
-  // Efecto para manejar la cámara
   useEffect(() => {
     if (cameraModalOpen) {
       startCamera();
@@ -67,6 +68,8 @@ const Auth = () => {
 
   const startCamera = async () => {
     try {
+      stopCamera();
+    
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
@@ -74,18 +77,30 @@ const Auth = () => {
           height: { ideal: 720 },
         },
       });
+
+      streamRef.current = stream;
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        await new Promise((resolve) => {
+          videoRef.current.onloadedmetadata = resolve;
+        });
       }
     } catch (err) {
       toast.error("No se pudo acceder a la cámara");
       console.error("Error al acceder a la cámara:", err);
+      setCameraModalOpen(false); 
     }
   };
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
   };
 
@@ -95,20 +110,22 @@ const Auth = () => {
       const canvas = canvasRef.current;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      canvas
-        .getContext("2d")
-        .drawImage(video, 0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Simulamos chequeo de calidad de imagen (en un caso real usarías una librería o API)
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // canvas
+      //   .getContext("2d")
+      //   .drawImage(video, 0, 0, canvas.width, canvas.height);
+
       const qualityCheck = {
-        hasGoodLighting: Math.random() > 0.3, // 70% de probabilidad de buena luz
-        isCentered: Math.random() > 0.3, // 70% de probabilidad de estar centrado
-        isClear: Math.random() > 0.3, // 70% de probabilidad de estar claro
+        hasGoodLighting: Math.random() > 0.3,
+        isCentered: Math.random() > 0.3,
+        isClear: Math.random() > 0.3,
       };
 
       setImageQuality(qualityCheck);
 
-      // Si cumple con los requisitos, permitimos usar la foto
       if (
         qualityCheck.hasGoodLighting &&
         qualityCheck.isCentered &&
@@ -118,6 +135,7 @@ const Auth = () => {
           (blob) => {
             const file = new File([blob], "face.jpg", { type: "image/jpeg" });
             setValue("face_image", [file]);
+            setHasValidPhoto(true);
             toast.success("Foto capturada con éxito");
           },
           "image/jpeg",
@@ -125,34 +143,58 @@ const Auth = () => {
         );
       } else {
         toast.warning("La foto no cumple con los requisitos de calidad");
+        setHasValidPhoto(false);
       }
     }
   };
 
   const handleRegister = async (data) => {
     const formData = new FormData();
-    formData.append("username", data.email.split("@")[0]);
-    formData.append("full_name", data.name);
+    // formData.append("username", data.email.split("@")[0]);
     formData.append("email", data.email);
+    formData.append("full_name", data.name);
     formData.append("password", data.password);
-    formData.append("password2", data.confirmPassword);
+    formData.append("password_conf", data.confirmPassword);
     formData.append("face_image", data.face_image[0]);
 
     try {
       const res = await axios.post(`${API_URL}/api/auth/register/`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+
       const { access } = res.data.tokens;
       localStorage.setItem("token", access);
       toast.success("Registro exitoso 🎉");
       reset();
       setIsLogin(true);
     } catch (err) {
-      const msg =
-        err.response?.data?.detail ||
-        Object.values(err.response?.data || {})[0] ||
-        "Error de registro";
-      toast.error(msg.toString());
+      if (err.response) {
+        const { data } = err.response;
+        const cleanErrorMessage = (error) => {
+          return error.replace(/^\[|\]$/g, "").replace(/^'|'$/g, "");
+        };
+
+        // Manejo de errores de validación de campos
+        if (data.errors) {
+          Object.entries(data.errors).forEach(([field, messages]) => {
+            if (Array.isArray(messages)) {
+              messages.forEach((message) => {
+                toast.error(cleanErrorMessage(message));
+              });
+            }
+            else {
+              toast.error(cleanErrorMessage(messages));
+            }
+          });
+          return;
+        }
+
+        if (data.detail || data.message) {
+          toast.error(cleanErrorMessage(data.detail || data.message));
+          return;
+        }
+      }
+      toast.error("Ocurrió un error durante el registro");
     }
   };
 
@@ -164,8 +206,10 @@ const Auth = () => {
       });
       const { access } = res.data.tokens;
       localStorage.setItem("token", access);
-      toast.success("Inicio de sesión exitoso");
-      navigate("/dashboard");
+      localStorage.setItem("user", JSON.stringify(res.data.user));
+
+      toast.success(`Bienvenido ${res.data.user.full_name}!`);
+      setTimeout(() => navigate("/dashboard"), 2000);
     } catch (err) {
       toast.error("Credenciales incorrectas");
       console.error("Error de inicio de sesión:", err);
@@ -187,7 +231,6 @@ const Auth = () => {
 
       toast.info("Por favor, mire a la cámara");
 
-      // Esperamos 2 segundos para dar tiempo al usuario a posicionarse
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const canvas = document.createElement("canvas");
@@ -483,21 +526,35 @@ const Auth = () => {
       {/* Modal para captura de foto en registro */}
       <Modal
         isOpen={cameraModalOpen}
-        onRequestClose={() => setCameraModalOpen(false)}
+        onRequestClose={() => {
+          stopCamera(); 
+          setCameraModalOpen(false);
+          setHasValidPhoto(false);
+        }}
         style={customStyles}
         contentLabel="Captura de rostro"
       >
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-center">Captura tu rostro</h3>
+          <h3 className="text-lg font-medium text-center">
+            {hasValidPhoto ? "Foto capturada" : "Captura tu rostro"}
+          </h3>
 
           <div className="relative bg-black rounded-lg overflow-hidden">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-auto"
-            />
+            {hasValidPhoto ? (
+              <img
+                src={canvasRef.current?.toDataURL()}
+                alt="Foto capturada"
+                className="w-full h-auto -scale-x-100"
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-auto -scale-x-100 rounded-full"
+              />
+            )}
             <canvas ref={canvasRef} className="hidden" />
           </div>
 
@@ -532,18 +589,44 @@ const Auth = () => {
           </div>
 
           <div className="flex space-x-4">
-            <button
-              onClick={capturePhoto}
-              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md"
-            >
-              Tomar foto
-            </button>
-            <button
-              onClick={() => setCameraModalOpen(false)}
-              className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 px-4 rounded-md"
-            >
-              Cancelar
-            </button>
+            {hasValidPhoto ? (
+              <>
+                <button
+                  onClick={() => {
+                    stopCamera();
+                    setCameraModalOpen(false);
+                    setHasValidPhoto(false);
+                  }}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md"
+                >
+                  Usar esta foto
+                </button>
+                <button
+                  onClick={() => {
+                    setHasValidPhoto(false); 
+                    startCamera();
+                  }}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 px-4 rounded-md"
+                >
+                  Volver a tomar
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={capturePhoto}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md"
+                >
+                  Tomar foto
+                </button>
+                <button
+                  onClick={() => setCameraModalOpen(false)}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 px-4 rounded-md"
+                >
+                  Cancelar
+                </button>
+              </>
+            )}
           </div>
         </div>
       </Modal>
