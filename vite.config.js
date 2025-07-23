@@ -4,7 +4,10 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: process.env.VITE_BASE_PATH || "/facial-auth-frontend",
+  base:
+    process.env.NODE_ENV === "production"
+      ? "/"
+      : process.env.VITE_BASE_PATH || "/",
   build: {
     outDir: "dist",
     emptyOutDir: true,

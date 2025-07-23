@@ -1,5 +1,5 @@
 window.FaceAuthSDK = (function () {
-  const baseURL = "http://localhost:5173/"; // Cambia por tu dominio real
+  const baseURL = "https://facial-auth-frontend.vercel.app/";
 
   async function registerUser({
     appToken,
