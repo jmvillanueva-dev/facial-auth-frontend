@@ -2,25 +2,18 @@
   "version": 2,
   "builds": [
     {
-      "src": "dist/index.html",
-      "use": "@vercel/static"
+      "src": "vite.config.js",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
     }
   ],
   "routes": [
-    {
-      "src": "/auth(.*)",
-      "dest": "/index.html",
-      "caseSensitive": false
-    },
-    {
-      "src": "/dashboard(.*)",
-      "dest": "/index.html"
-    },
     {
       "src": "/(.*)",
       "dest": "/index.html",
       "status": 200
     }
-  ],
-  "devCommand": "npm run dev"
+  ]
 }
