@@ -1,5 +1,5 @@
 window.FaceAuthSDK = (function () {
-  const baseURL = "https://facial-auth-frontend.vercel.app/";
+  const baseURL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000/api";
 
   async function registerUser({
     appToken,
