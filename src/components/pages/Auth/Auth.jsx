@@ -23,7 +23,7 @@ const customStyles = {
     width: "500px",
     borderRadius: "12px",
     padding: "2rem",
-    zIndex: 15, 
+    zIndex: 15,
   },
   overlay: {
     backgroundColor: "rgba(0, 0, 0, 0.75)",
@@ -44,10 +44,23 @@ const Auth = () => {
     isCentered: false,
     isClear: false,
   });
+  const [showForceRegisterOption, setShowForceRegisterOption] = useState(false);
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const navigate = useNavigate();
+
+  // Estados para manejar coincidencias ambiguas y feedback
+  const [ambiguousMatches, setAmbiguousMatches] = useState([]);
+  const [ambiguousModalOpen, setAmbiguousModalOpen] = useState(false);
+  const [selectedAmbiguousUser, setSelectedAmbiguousUser] = useState(null);
+  const [capturedFaceFile, setCapturedFaceFile] = useState(null);
+  const [feedbackPassword, setFeedbackPassword] = useState("");
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [confirmedUser, setConfirmedUser] = useState(null);
+  const [loginAttemptId, setLoginAttemptId] = useState(null);
+  const [currentModalStep, setCurrentModalStep] = useState("initial_prompt");
 
   const {
     register,
@@ -56,7 +69,23 @@ const Auth = () => {
     reset,
     setValue,
     watch,
-  } = useForm();
+  } = useForm({
+    defaultValues: {
+      force_register: false,
+    },
+  });
+
+  const faceImage = watch("face_image");
+  useEffect(() => {
+    if (!faceImage || faceImage.length === 0) {
+      setHasValidPhoto(false);
+      setImageQuality({
+        hasGoodLighting: false,
+        isCentered: false,
+        isClear: false,
+      });
+    }
+  }, [faceImage]);
 
   useEffect(() => {
     if (cameraModalOpen) {
@@ -66,10 +95,15 @@ const Auth = () => {
     }
   }, [cameraModalOpen]);
 
+  useEffect(() => {
+    setShowForceRegisterOption(false);
+    setValue("force_register", false);
+  }, [isLogin, setValue]);
+
   const startCamera = async () => {
     try {
       stopCamera();
-    
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
@@ -79,17 +113,18 @@ const Auth = () => {
       });
 
       streamRef.current = stream;
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await new Promise((resolve) => {
           videoRef.current.onloadedmetadata = resolve;
         });
+        videoRef.current.play();
       }
     } catch (err) {
       toast.error("No se pudo acceder a la cámara");
       console.error("Error al acceder a la cámara:", err);
-      setCameraModalOpen(false); 
+      setCameraModalOpen(false);
     }
   };
 
@@ -114,14 +149,11 @@ const Auth = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      // canvas
-      //   .getContext("2d")
-      //   .drawImage(video, 0, 0, canvas.width, canvas.height);
 
       const qualityCheck = {
-        hasGoodLighting: Math.random() > 0.3,
-        isCentered: Math.random() > 0.3,
-        isClear: Math.random() > 0.3,
+        hasGoodLighting: Math.random() > 0.1, 
+        isCentered: Math.random() > 0.1,
+        isClear: Math.random() > 0.1,
       };
 
       setImageQuality(qualityCheck);
@@ -142,63 +174,91 @@ const Auth = () => {
           0.95
         );
       } else {
-        toast.warning("La foto no cumple con los requisitos de calidad");
+        toast.warning(
+          "La foto no cumple con los requisitos de calidad. Intenta de nuevo."
+        );
         setHasValidPhoto(false);
+        setValue("face_image", null);
       }
     }
   };
 
   const handleRegister = async (data) => {
+    setIsProcessing(true);
     const formData = new FormData();
-    // formData.append("username", data.email.split("@")[0]);
     formData.append("email", data.email);
     formData.append("full_name", data.name);
     formData.append("password", data.password);
     formData.append("password_conf", data.confirmPassword);
     formData.append("face_image", data.face_image[0]);
+    formData.append("force_register", data.force_register ? "true" : "false");
 
     try {
       const res = await axios.post(`${API_URL}/api/auth/register/`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
+      toast.success("Registro exitoso 🎉");
       const { access } = res.data.tokens;
       localStorage.setItem("token", access);
-      toast.success("Registro exitoso 🎉");
       reset();
       setIsLogin(true);
+      setShowForceRegisterOption(false);
+      setValue("force_register", false);
     } catch (err) {
       if (err.response) {
         const { data } = err.response;
         const cleanErrorMessage = (error) => {
-          return error.replace(/^\[|\]$/g, "").replace(/^'|'$/g, "");
+          return String(error)
+            .replace(/^\[|\]$/g, "")
+            .replace(/^'|'$/g, "");
         };
 
-        // Manejo de errores de validación de campos
+        let errorMessage = "Ocurrió un error desconocido durante el registro.";
+
         if (data.errors) {
           Object.entries(data.errors).forEach(([field, messages]) => {
             if (Array.isArray(messages)) {
               messages.forEach((message) => {
                 toast.error(cleanErrorMessage(message));
               });
-            }
-            else {
+            } else {
               toast.error(cleanErrorMessage(messages));
             }
           });
-          return;
+          errorMessage = Object.values(data.errors)
+            .flat()
+            .map(cleanErrorMessage)
+            .join(", ");
+        } else if (data.detail || data.message) {
+          errorMessage = cleanErrorMessage(data.detail || data.message);
+          toast.error(errorMessage);
+        } else {
+          errorMessage = JSON.stringify(data);
+          toast.error("Error inesperado en la respuesta del servidor.");
         }
 
-        if (data.detail || data.message) {
-          toast.error(cleanErrorMessage(data.detail || data.message));
-          return;
+        console.error("Mensaje de error del backend:", errorMessage);
+
+        if (errorMessage.includes("Este rostro ya está registrado")) {
+          setShowForceRegisterOption(true);
+        } else {
+          setShowForceRegisterOption(false);
+          setValue("force_register", false);
         }
+      } else {
+        toast.error("Error de red o servidor no disponible.");
+        console.error("Error de red:", err);
+        setShowForceRegisterOption(false);
+        setValue("force_register", false);
       }
-      toast.error("Ocurrió un error durante el registro");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleLogin = async (data) => {
+    setIsProcessing(true);
     try {
       const res = await axios.post(`${API_URL}/api/auth/login/`, {
         username: data.email.split("@")[0],
@@ -213,15 +273,18 @@ const Auth = () => {
     } catch (err) {
       toast.error("Credenciales incorrectas");
       console.error("Error de inicio de sesión:", err);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
+  // Función para manejar el inicio de sesión con reconocimiento facial
   const handleFaceLogin = async () => {
-    try {
-      setIsCameraActive(true);
-      setIsProcessing(true);
-      toast.info("Preparando cámara...");
+    setIsCameraActive(true);
+    setIsProcessing(true);
+    toast.info("Preparando cámara...");
 
+    try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user" },
       });
@@ -241,6 +304,7 @@ const Auth = () => {
 
       const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg"));
       const faceFile = new File([blob], "face.jpg", { type: "image/jpeg" });
+      setCapturedFaceFile(faceFile);
 
       toast.info("Verificando tu identidad...");
 
@@ -253,15 +317,92 @@ const Auth = () => {
         { headers: { "Content-Type": "multipart/form-data" } }
       );
 
-      localStorage.setItem("token", res.data.tokens.access);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+      setLoginAttemptId(res.data.login_attempt_id);
 
-      toast.success(`Bienvenido ${res.data.user.full_name}!`);
-      setTimeout(() => navigate("/dashboard"), 2000);
+      if (res.data.status === "success") {
+        setConfirmedUser(res.data.user);
+        setIsFeedbackModalOpen(true);
+        setCurrentModalStep("initial_prompt");
+      } else if (res.data.status === "ambiguous_match") {
+        setAmbiguousMatches(res.data.matches);
+        setAmbiguousModalOpen(true);
+        setCurrentModalStep("ambiguous_selection");
+        toast.warning(
+          "Coincidencia ambigua. Por favor, confirma tu identidad."
+        );
+      } else {
+        toast.error("No se encontró una coincidencia con tu rostro.");
+        if (res.data.login_attempt_id) {
+          handleFeedbackSubmit(
+            "incorrecto",
+            null,
+            null,
+            res.data.login_attempt_id
+          );
+        }
+      }
     } catch (err) {
-      toast.error(err.response?.data?.detail || "No se reconoció el rostro");
+      if (err.response && err.response.data.detail) {
+        toast.error(err.response.data.detail);
+      } else {
+        toast.error("Ocurrió un error durante el reconocimiento facial.");
+      }
+      console.error("Error en el reconocimiento facial:", err);
+      if (loginAttemptId) {
+        handleFeedbackSubmit("incorrecto", null, null, loginAttemptId);
+      }
     } finally {
       setIsCameraActive(false);
+      setIsProcessing(false);
+    }
+  };
+
+  // Función para manejar el envío de feedback
+  const handleFeedbackSubmit = async (
+    feedback_decision,
+    user = null,
+    password = ""
+  ) => {
+    setIsProcessing(true);
+    const formData = new FormData();
+
+    if (loginAttemptId) {
+      formData.append("login_attempt_id", loginAttemptId);
+    }
+    formData.append("feedback_decision", feedback_decision);
+
+    if (feedback_decision === "correcto") {
+      if (user) formData.append("user_id", user.id);
+      if (password) formData.append("password", password);
+      if (capturedFaceFile) formData.append("face_image", capturedFaceFile);
+    } else {
+      if (capturedFaceFile) formData.append("face_image", capturedFaceFile);
+    }
+
+    try {
+      const res = await axios.post(
+        `${API_URL}/api/auth/login/face/feedback/`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+
+      if (feedback_decision === "correcto") {
+        localStorage.setItem("token", res.data.tokens.access);
+        localStorage.setItem("user", JSON.stringify(res.data.user));
+        toast.success(
+          `Bienvenido ${res.data.user.full_name}! Gracias por tu feedback.`
+        );
+        setTimeout(() => navigate("/dashboard"), 2000);
+      } else {
+        toast.info("Feedback de identificación incorrecta registrado.");
+      }
+      closeAllModalsAndResetState();
+    } catch (err) {
+      toast.error(
+        err.response?.data?.detail ||
+          "Error al procesar el feedback. Contraseña incorrecta o datos inválidos."
+      );
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -271,6 +412,19 @@ const Auth = () => {
     else handleRegister(data);
   };
 
+  // Función para cerrar todos los modales y resetear el estado
+  const closeAllModalsAndResetState = () => {
+    setAmbiguousModalOpen(false);
+    setIsFeedbackModalOpen(false);
+    setFeedbackPassword("");
+    setSelectedAmbiguousUser(null);
+    setConfirmedUser(null);
+    setCapturedFaceFile(null);
+    setLoginAttemptId(null);
+    setCurrentModalStep("initial_prompt");
+  };
+
+  
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 relative">
       {/* Botón para volver al Home */}
@@ -307,13 +461,13 @@ const Auth = () => {
               type="button"
               onClick={handleFaceLogin}
               disabled={isProcessing || isCameraActive}
-              className={`flex items-center justify-center w-full py-2 rounded-md mb-3 font-medium transition-colors  ${
+              className={`flex items-center justify-center w-full py-2 rounded-md mb-3 font-medium transition-colors ${
                 isProcessing || isCameraActive
                   ? "bg-gray-400 cursor-not-allowed"
                   : "bg-cyan-100 hover:bg-cyan-200 text-indigo-600"
               }`}
             >
-              {isCameraActive ? (
+              {isProcessing || isCameraActive ? (
                 <span className="flex items-center">
                   <svg
                     className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
@@ -343,6 +497,15 @@ const Auth = () => {
                 </>
               )}
             </button>
+          )}
+
+          {isLogin && (
+            <div className="flex items-center justify-between text-center mb-4 font-light text-xs text-gray-600">
+              <span>
+                Servicio en Beta: ayúdanos a mejorar enviando tu feedback tras
+                cada reconocimiento.
+              </span>
+            </div>
           )}
 
           {isLogin && (
@@ -474,6 +637,30 @@ const Auth = () => {
             </div>
           )}
 
+          {/* Opción de Forzar Registro (condicional) */}
+          {!isLogin && showForceRegisterOption && (
+            <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
+              <p className="text-sm text-red-700 font-medium mb-2">
+                ¡Atención! Se detectó un rostro similar a uno ya registrado.
+              </p>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="force-register-checkbox"
+                  {...register("force_register")}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label
+                  htmlFor="force-register-checkbox"
+                  className="ml-2 block text-sm text-gray-900"
+                >
+                  Estoy seguro de que soy una persona nueva o deseo actualizar
+                  mi perfil.
+                </label>
+              </div>
+            </div>
+          )}
+
           <button
             type="submit"
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition duration-150"
@@ -527,9 +714,10 @@ const Auth = () => {
       <Modal
         isOpen={cameraModalOpen}
         onRequestClose={() => {
-          stopCamera(); 
+          stopCamera();
           setCameraModalOpen(false);
           setHasValidPhoto(false);
+          setValue("face_image", null);
         }}
         style={customStyles}
         contentLabel="Captura de rostro"
@@ -552,7 +740,7 @@ const Auth = () => {
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-auto -scale-x-100 rounded-full"
+                className="w-full h-auto -scale-x-100"
               />
             )}
             <canvas ref={canvasRef} className="hidden" />
@@ -595,7 +783,6 @@ const Auth = () => {
                   onClick={() => {
                     stopCamera();
                     setCameraModalOpen(false);
-                    setHasValidPhoto(false);
                   }}
                   className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md"
                 >
@@ -603,7 +790,8 @@ const Auth = () => {
                 </button>
                 <button
                   onClick={() => {
-                    setHasValidPhoto(false); 
+                    setHasValidPhoto(false);
+                    setValue("face_image", null);
                     startCamera();
                   }}
                   className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 px-4 rounded-md"
@@ -620,7 +808,10 @@ const Auth = () => {
                   Tomar foto
                 </button>
                 <button
-                  onClick={() => setCameraModalOpen(false)}
+                  onClick={() => {
+                    setCameraModalOpen(false);
+                    setValue("face_image", null);
+                  }}
                   className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 px-4 rounded-md"
                 >
                   Cancelar
@@ -629,6 +820,154 @@ const Auth = () => {
             )}
           </div>
         </div>
+      </Modal>
+
+      {/* --- Modal para confirmar identidad después de un match exitoso o ambiguo --- */}
+      <Modal
+        isOpen={isFeedbackModalOpen || ambiguousModalOpen}
+        onRequestClose={closeAllModalsAndResetState}
+        style={customStyles}
+        contentLabel="Confirma tu identidad"
+      >
+        {/* Sección inicial de pregunta "¿Es usted?" para status 'success' */}
+        {currentModalStep === "initial_prompt" && confirmedUser && (
+          <div className="space-y-6">
+            <h3 className="text-xl font-medium text-center">
+              Rostro reconocido
+            </h3>
+            <p className="text-center text-sm text-gray-600">
+              Hemos reconocido tu rostro como:
+            </p>
+            <p className="text-center font-semibold text-lg text-indigo-600">
+              Perfil: {confirmedUser.full_name}
+            </p>
+            <p className="text-center text-gray-600">¿Es usted este perfil?</p>
+            <div className="flex justify-center space-x-4 mt-4">
+              <button
+                onClick={() => setCurrentModalStep("password_input")}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md transition duration-150"
+              >
+                Sí, soy yo
+              </button>
+              <button
+                onClick={() =>
+                  handleFeedbackSubmit("incorrecto", confirmedUser, "")
+                }
+                className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 px-4 rounded-md transition duration-150"
+              >
+                No soy yo
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sección de selección de coincidencias ambiguas */}
+        {currentModalStep === "ambiguous_selection" &&
+          ambiguousMatches.length > 0 && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-medium text-center mb-4">
+                ¿Cuál de estos perfiles eres tú?
+              </h3>
+              <p className="text-center text-sm text-gray-600 mb-6">
+                El sistema encontró múltiples perfiles con similitud. Por favor,
+                selecciona el tuyo para ayudarnos a mejorar.
+              </p>
+
+              <ul className="mb-6 space-y-3">
+                {ambiguousMatches.map((match) => (
+                  <li key={match.id}>
+                    <button
+                      onClick={() => {
+                        setSelectedAmbiguousUser(match);
+                        setCurrentModalStep("password_input"); // Ir al paso de contraseña
+                      }}
+                      className={`w-full text-left p-4 rounded-lg transition-all duration-200 ${
+                        selectedAmbiguousUser?.id === match.id
+                          ? "bg-indigo-600 text-white shadow-lg transform scale-105"
+                          : "bg-gray-100 hover:bg-gray-200 text-gray-800"
+                      }`}
+                    >
+                      <span className="font-semibold">{match.full_name}</span>
+                      <br />
+                      <span className="text-xs opacity-75">
+                        ID de usuario: {match.id}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => handleFeedbackSubmit("incorrecto", null, "")}
+                className="w-full text-center text-sm text-red-600 hover:text-red-800 transition duration-150"
+              >
+                Ninguno corresponde a mi perfil
+              </button>
+            </div>
+          )}
+
+        {/* Sección de entrada de contraseña para confirmación */}
+        {currentModalStep === "password_input" &&
+          (confirmedUser || selectedAmbiguousUser) && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-medium text-center">
+                Confirmar Identidad
+              </h3>
+              <p className="text-center text-sm text-gray-600">
+                Para completar el inicio de sesión y mejorar la precisión de
+                nuestro modelo, por favor, ingresa tu contraseña.
+              </p>
+              <p className="text-center font-semibold text-lg text-indigo-600">
+                Perfil:{" "}
+                {confirmedUser?.full_name || selectedAmbiguousUser?.full_name}
+              </p>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const userToConfirm = confirmedUser || selectedAmbiguousUser;
+                  handleFeedbackSubmit(
+                    "correcto",
+                    userToConfirm,
+                    feedbackPassword
+                  );
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contraseña
+                  </label>
+                  <input
+                    type="password"
+                    value={feedbackPassword}
+                    onChange={(e) => setFeedbackPassword(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-md border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  {isProcessing
+                    ? "Confirmando..."
+                    : "Confirmar y Iniciar Sesión"}
+                </button>
+              </form>
+              <button
+                onClick={() =>
+                  handleFeedbackSubmit(
+                    "incorrecto",
+                    confirmedUser || selectedAmbiguousUser,
+                    ""
+                  )
+                }
+                className="w-full text-center text-sm text-red-600 hover:text-red-800 transition duration-150"
+              >
+                No soy este perfil
+              </button>
+            </div>
+          )}
       </Modal>
 
       <ToastContainer position="top-center" autoClose={3000} />

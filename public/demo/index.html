@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Control de Asistencia Facial</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@100;200;300;400;500;600;700&display=swap");
+      body {
+        font-family: "IBM Plex Sans Arabic", sans-serif;
+        font-style: normal;
+        background-color: #f3f4f6;
+        color: #1f2937;
+      }
+      .container {
+        max-width: 1200px;
+      }
+      .video-container {
+        position: relative;
+        width: 100%;
+        max-width: 400px; /* Limitar el ancho del video para una mejor visualización */
+        margin: 0 auto;
+        border-radius: 0.75rem; /* rounded-xl */
+        overflow: hidden;
+        background-color: #000;
+      }
+      .video-container video {
+        width: 100%;
+        height: auto;
+        display: block;
+        transform: scaleX(
+          -1
+        ); /* Reflejar la cámara para que parezca un espejo */
+      }
+      .overlay-circle {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 70%; /* Ajusta el tamaño del círculo */
+        padding-bottom: 70%; /* Hace que sea un círculo perfecto */
+        border: 4px dashed rgba(255, 255, 255, 0.7);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 10;
+        box-sizing: border-box;
+      }
+      /* Estilos para el modal */
+      .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+      }
+      .modal-content {
+        background-color: white;
+        padding: 2rem;
+        border-radius: 0.75rem; /* rounded-xl */
+        box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+        max-width: 500px;
+        width: 90%;
+        text-align: center;
+      }
+      .toast-container {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 2000;
+      }
+      .toast {
+        background-color: #333;
+        color: white;
+        padding: 0.75rem 1.25rem;
+        border-radius: 0.5rem;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .toast.success {
+        background-color: #26d37a;
+      }
+      .toast.error {
+        background-color: #ed6666;
+      }
+      .toast.info {
+        background-color: #5a94f2;
+      }
+      .spinner {
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-top: 4px solid #fff;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body class="min-h-screen flex flex-col">
+    <header class="bg-white shadow-sm border-b border-slate-200 py-5">
+  <div class="container mx-auto px-4 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+    
+    <!-- Título -->
+    <div>
+      <h1 class="text-2xl font-bold text-indigo-600">
+        <a href="/" class="hover:no-underline">
+          Face<span class="text-slate-800">Auth</span> Demo
+        </a>
+      </h1>
+      <p class="mt-1 text-sm text-slate-600 max-w-lg">
+        Aplicación demo, usa tu API-Key, prueba el registro de usuario y reconocimiento facial. La interfaz propuesta te permite simular el registro de un empleado y llevar un control de entradas y salidas usando el servicio de FaceAuth.
+      </p>
+    </div>
+
+    <!-- Botón -->
+    <button
+      id="open-api-key-modal"
+      class="mt-4 sm:mt-0 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg shadow-sm transition">
+      Configurar API Key
+    </button>
+
+  </div>
+</header>
+
+    <main class="flex-1 container mx-auto px-4 py-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <!-- Sección de Registro de Empleados -->
+        <section class="bg-white p-6 rounded-xl shadow-lg">
+          <h2 class="text-2xl font-semibold mb-6 text-center text-indigo-700">
+            Registrar Nuevo Empleado
+          </h2>
+          <div class="video-container mb-4">
+            <video id="video-register" autoplay playsinline muted></video>
+            <div class="overlay-circle"></div>
+          </div>
+          <canvas id="canvas-register" class="hidden"></canvas>
+
+          <form id="register-form" class="space-y-4 m-auto w-80">
+            <div>
+              <label
+                for="employee-name"
+                class="block text-sm font-medium text-gray-700"
+                >Nombre Completo*</label
+              >
+              <input
+                type="text"
+                id="employee-name"
+                name="name"
+                required
+                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              />
+            </div>
+            <div>
+              <label
+                for="employee-role"
+                class="block text-sm font-medium text-gray-700"
+                >Cargo*</label
+              >
+              <input
+                type="text"
+                id="employee-role"
+                name="role"
+                required
+                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              />
+            </div>
+            <div>
+              <label
+                for="employee-email"
+                class="block text-sm font-medium text-gray-700"
+                >Correo Electrónico*</label
+              >
+              <input
+                type="email"
+                id="employee-email"
+                name="email"
+                required
+                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              />
+            </div>
+            <div>
+              <label
+                for="employee-password"
+                class="block text-sm font-medium text-gray-700"
+                >Contraseña*</label
+              >
+              <input
+                type="password"
+                id="employee-password"
+                name="password"
+                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              />
+            </div>
+            <div id="force-register-option" class="hidden">
+              <p class="text-sm text-red-600 mb-2">
+                ¡Atención! Se detectó un rostro similar a uno ya registrado. Si
+                estás seguro de que eres una persona nueva o deseas actualizar
+                tu perfil, marca la casilla para forzar el registro.
+              </p>
+              <div class="flex items-center">
+                <input
+                  type="checkbox"
+                  id="force-register-checkbox"
+                  class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label
+                  for="force-register-checkbox"
+                  class="ml-2 block text-sm text-gray-900"
+                >
+                  Forzar Registro
+                </label>
+              </div>
+            </div>
+            <button
+              type="button"
+              id="capture-photo-btn"
+              class="w-full flex justify-center items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200"
+            >
+              <svg
+                class="w-5 h-5 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                ></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                ></path>
+              </svg>
+              Tomar Foto del Rostro
+            </button>
+            <button
+              type="submit"
+              id="register-submit-btn"
+              disabled
+              class="w-full flex justify-center items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span id="register-spinner" class="hidden spinner mr-2"></span>
+              Registrar Empleado
+            </button>
+          </form>
+        </section>
+
+        <!-- Sección de Control de Asistencia -->
+        <section class="bg-white p-6 rounded-xl shadow-lg">
+          <h2 class="text-2xl font-semibold mb-6 text-center text-green-700">
+            Control de Asistencia
+          </h2>
+          <div class="video-container mb-4">
+            <video id="video-attendance" autoplay playsinline muted></video>
+            <div class="overlay-circle"></div>
+          </div>
+          <canvas id="canvas-attendance" class="hidden"></canvas>
+
+          <div class="flex space-x-4 mb-6">
+            <button
+              id="check-in-btn"
+              class="flex-1 flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-green-500 hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span id="check-in-spinner" class="hidden spinner mr-2"></span>
+              Entrada
+            </button>
+            <button
+              id="check-out-btn"
+              class="flex-1 flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span id="check-out-spinner" class="hidden spinner mr-2"></span>
+              Salida
+            </button>
+          </div>
+
+          <div
+            id="attendance-status"
+            class="text-center text-lg font-medium mb-4"
+          >
+            <!-- Estado de asistencia se mostrará aquí -->
+          </div>
+
+          <h3 class="text-xl font-semibold mb-4 text-gray-700">
+            Registros de Asistencia
+          </h3>
+          <div
+            class="bg-gray-50 p-4 rounded-lg shadow-inner overflow-x-auto h-96"
+          >
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-100">
+                <tr>
+                  <th
+                    class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Nombre
+                  </th>
+                  <th
+                    class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Rol
+                  </th>
+                  <th
+                    class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Tipo
+                  </th>
+                  <th
+                    class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Hora
+                  </th>
+                </tr>
+              </thead>
+              <tbody
+                id="attendance-records-body"
+                class="bg-white divide-y divide-gray-200"
+              >
+                <!-- Registros se insertarán aquí -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Modal de Configuración de API Key -->
+    <div id="api-key-modal" class="modal hidden">
+      <div class="modal-content">
+        <h3 class="text-xl font-semibold mb-4 text-indigo-700">
+          Configurar API Key
+        </h3>
+        <p class="text-gray-600 mb-4">
+          Ingresa el Token de tu aplicación (API Key) obtenido de tu dashboard
+          de FaceAuth.
+        </p>
+        <form id="api-key-form" class="space-y-4">
+          <div>
+            <label
+              for="api-key-input"
+              class="block text-sm font-medium text-gray-700 text-left"
+              >API Key</label
+            >
+            <input
+              type="text"
+              id="api-key-input"
+              required
+              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            />
+          </div>
+          <div class="flex justify-end space-x-3">
+            <button
+              type="button"
+              id="cancel-api-key-btn"
+              class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-200"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-200"
+            >
+              Guardar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal de Confirmación de Asistencia (para casos ambiguos o de alta confianza) -->
+    <div id="attendance-confirm-modal" class="modal hidden">
+      <div class="modal-content">
+        <h3 class="text-xl font-semibold mb-4 text-indigo-700">
+          Confirmar Identidad
+        </h3>
+
+        <!-- Sección inicial de pregunta "¿Es usted?" para status 'success' -->
+        <div id="initial-confirmation-prompt" class="space-y-4 hidden">
+          <p
+            id="identified-user-name"
+            class="text-center font-semibold text-lg text-indigo-600 mb-4"
+          >
+            <!-- Nombre del usuario identificado se mostrará aquí -->
+          </p>
+          <p class="text-gray-600 mb-4">¿Es usted este perfil?</p>
+          <div class="flex justify-center space-x-4">
+            <button
+              type="button"
+              id="confirm-yes-btn"
+              class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-200"
+            >
+              Sí, soy yo
+            </button>
+            <button
+              type="button"
+              id="confirm-no-btn"
+              class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-200"
+            >
+              No soy yo
+            </button>
+          </div>
+        </div>
+
+        <!-- Sección de selección de coincidencias ambiguas -->
+        <div id="ambiguous-matches-section" class="space-y-4 hidden">
+          <p class="text-gray-600 mb-4">
+            Hemos encontrado posibles coincidencias. Selecciona tu perfil y
+            confirma tu identidad.
+          </p>
+          <div id="ambiguous-matches-list" class="mb-6 space-y-3">
+            <!-- Lista de usuarios ambiguos se insertará aquí -->
+          </div>
+          <button
+            id="not-me-ambiguous-btn"
+            class="mt-4 text-sm text-red-600 hover:text-red-800"
+          >
+            Ninguno de estos soy yo / Volver a intentar
+          </button>
+        </div>
+
+        <!-- Sección de entrada de contraseña para confirmación -->
+        <form id="confirm-password-form" class="space-y-4 hidden">
+          <p id="password-prompt-message" class="text-gray-600 mb-4">
+            Por favor, ingresa tu contraseña para confirmar tu identidad.
+          </p>
+          <div
+            id="selected-user-display"
+            class="text-center font-semibold text-lg text-indigo-600 mb-4 hidden"
+          >
+            <!-- Nombre del usuario seleccionado se mostrará aquí -->
+          </div>
+          <div>
+            <label
+              for="confirm-password-input"
+              class="block text-sm font-medium text-gray-700 text-left"
+              >Contraseña</label
+            >
+            <input
+              type="password"
+              id="confirm-password-input"
+              required
+              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            />
+          </div>
+          <div class="flex justify-end space-x-3">
+            <button
+              type="button"
+              id="cancel-confirm-password-btn"
+              class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-200"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              id="confirm-submit-btn"
+              class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span id="confirm-spinner" class="hidden spinner mr-2"></span>
+              Confirmar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      // --- Variables Globales y Configuración ---
+      const API_BASE_URL = "http://localhost:8000/api"; // Reemplaza con la URL de tu backend si es diferente
+      let API_KEY = localStorage.getItem("attendance_app_api_key"); // Token de la ClientApp
+      let currentStream = null;
+      let capturedFaceFile = null; // Para guardar la imagen capturada para el feedback
+      let currentAttendanceAction = ""; // 'entrada' o 'salida'
+      let currentAmbiguousMatches = []; // Para guardar las coincidencias ambiguas
+      let selectedAmbiguousUser = null; // Para guardar el usuario seleccionado de las ambiguas
+      let confirmedUserFromSuccess = null; // Para guardar el usuario de un match 'success'
+      let currentLoginAttemptId = null; // Nuevo estado para guardar el ID del intento de login
+      let currentConfirmationStep = ""; // 'initial_prompt', 'password_input', 'ambiguous_selection'
+
+      // --- Elementos del DOM ---
+      const videoRegister = document.getElementById("video-register");
+      const canvasRegister = document.getElementById("canvas-register");
+      const capturePhotoBtn = document.getElementById("capture-photo-btn");
+      const registerForm = document.getElementById("register-form");
+      const registerSubmitBtn = document.getElementById("register-submit-btn");
+      const registerSpinner = document.getElementById("register-spinner");
+      const forceRegisterOption = document.getElementById(
+        "force-register-option"
+      ); // Contenedor del checkbox
+      const forceRegisterCheckbox = document.getElementById(
+        "force-register-checkbox"
+      ); // Checkbox
+
+      const videoAttendance = document.getElementById("video-attendance");
+      const canvasAttendance = document.getElementById("canvas-attendance");
+      const checkInBtn = document.getElementById("check-in-btn");
+      const checkOutBtn = document.getElementById("check-out-btn");
+      const checkInSpinner = document.getElementById("check-in-spinner");
+      const checkOutSpinner = document.getElementById("check-out-spinner");
+      const attendanceStatusDiv = document.getElementById("attendance-status");
+      const attendanceRecordsBody = document.getElementById(
+        "attendance-records-body"
+      );
+
+      const apiKeyModal = document.getElementById("api-key-modal");
+      const openApiKeyModalBtn = document.getElementById("open-api-key-modal");
+      const cancelApiKeyBtn = document.getElementById("cancel-api-key-btn");
+      const apiKeyForm = document.getElementById("api-key-form");
+      const apiKeyInput = document.getElementById("api-key-input");
+
+      const attendanceConfirmModal = document.getElementById(
+        "attendance-confirm-modal"
+      );
+      const initialConfirmationPrompt = document.getElementById(
+        "initial-confirmation-prompt"
+      );
+      const identifiedUserName = document.getElementById(
+        "identified-user-name"
+      );
+      const confirmYesBtn = document.getElementById("confirm-yes-btn");
+      const confirmNoBtn = document.getElementById("confirm-no-btn");
+
+      const ambiguousMatchesSection = document.getElementById(
+        "ambiguous-matches-section"
+      );
+      const ambiguousMatchesList = document.getElementById(
+        "ambiguous-matches-list"
+      );
+      const notMeAmbiguousBtn = document.getElementById("not-me-ambiguous-btn");
+
+      const confirmPasswordForm = document.getElementById(
+        "confirm-password-form"
+      );
+      const passwordPromptMessage = document.getElementById(
+        "password-prompt-message"
+      );
+      const selectedUserDisplay = document.getElementById(
+        "selected-user-display"
+      );
+      const confirmPasswordInput = document.getElementById(
+        "confirm-password-input"
+      );
+      const confirmSubmitBtn = document.getElementById("confirm-submit-btn");
+      const cancelConfirmPasswordBtn = document.getElementById(
+        "cancel-confirm-password-btn"
+      );
+      const confirmSpinner = document.getElementById("confirm-spinner");
+
+      // --- Funciones de Utilidad ---
+
+      // Función para mostrar toasts (notificaciones)
+      function showToast(message, type = "info") {
+        const toastContainer =
+          document.querySelector(".toast-container") ||
+          (() => {
+            const div = document.createElement("div");
+            div.className = "toast-container";
+            document.body.appendChild(div);
+            return div;
+          })();
+
+        const toastElement = document.createElement("div");
+        toastElement.className = `toast ${type} flex items-center justify-between`;
+        toastElement.innerHTML = `
+                <span>${message}</span>
+                <button class="ml-4 text-white opacity-75 hover:opacity-100" onclick="this.parentElement.remove()">&times;</button>
+            `;
+        toastContainer.appendChild(toastElement);
+
+        setTimeout(() => {
+          toastElement.remove();
+        }, 3000);
+      }
+
+      // Iniciar la cámara
+      async function startCamera(videoElement) {
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop());
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+          });
+          videoElement.srcObject = stream;
+          currentStream = stream;
+          await videoElement.play();
+          showToast("📷 Cámara iniciada.", "info");
+        } catch (err) {
+          console.error("Error al acceder a la cámara:", err);
+          showToast(
+            "No se pudo acceder a la cámara. Asegúrate de dar permisos.",
+            "error"
+          );
+        }
+      }
+
+      // Detener la cámara
+      function stopCamera() {
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop());
+          currentStream = null;
+        }
+      }
+
+      // Capturar foto del video
+      function capturePhoto(videoElement, canvasElement) {
+        if (!videoElement || !canvasElement || !currentStream) {
+          showToast("Cámara no activa o elementos no encontrados.", "error");
+          return null;
+        }
+
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        const ctx = canvasElement.getContext("2d");
+        ctx.drawImage(
+          videoElement,
+          0,
+          0,
+          canvasElement.width,
+          canvasElement.height
+        );
+
+        // Obtener la imagen como Blob
+        return new Promise((resolve) => {
+          canvasElement.toBlob(
+            (blob) => {
+              const file = new File([blob], "face.jpg", { type: "image/jpeg" });
+              resolve(file);
+            },
+            "image/jpeg",
+            0.95
+          );
+        });
+      }
+
+      // Mostrar/Ocultar spinner en botones
+      function toggleSpinner(button, spinner, show) {
+        if (show) {
+          spinner.classList.remove("hidden");
+          button.setAttribute("disabled", "true");
+        } else {
+          spinner.classList.add("hidden");
+          button.removeAttribute("disabled");
+        }
+      }
+
+      // --- IndexedDB para Registros de Asistencia ---
+      const DB_NAME = "AttendanceDB";
+      const DB_VERSION = 1;
+      const STORE_NAME = "attendanceRecords";
+      let db;
+
+      function openDatabase() {
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+          request.onupgradeneeded = (event) => {
+            db = event.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              const objectStore = db.createObjectStore(STORE_NAME, {
+                keyPath: "id",
+                autoIncrement: true,
+              });
+              objectStore.createIndex("employeeId", "employeeId", {
+                unique: false,
+              });
+              objectStore.createIndex("timestamp", "timestamp", {
+                unique: false,
+              });
+            }
+          };
+
+          request.onsuccess = (event) => {
+            db = event.target.result;
+            resolve(db);
+          };
+
+          request.onerror = (event) => {
+            console.error("Error abriendo IndexedDB:", event.target.errorCode);
+            showToast("Error al inicializar la base de datos local.", "error");
+            reject(event.target.errorCode);
+          };
+        });
+      }
+
+      async function addAttendanceRecord(record) {
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction([STORE_NAME], "readwrite");
+          const objectStore = transaction.objectStore(STORE_NAME);
+          const request = objectStore.add(record);
+
+          request.onsuccess = () => {
+            resolve();
+          };
+
+          request.onerror = (event) => {
+            console.error("Error adding record:", event.target.errorCode);
+            showToast("Error al guardar el registro de asistencia.", "error");
+            reject(event.target.errorCode);
+          };
+        });
+      }
+
+      async function getAttendanceRecords() {
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction([STORE_NAME], "readonly");
+          const objectStore = transaction.objectStore(STORE_NAME);
+          const request = objectStore.getAll();
+
+          request.onsuccess = (event) => {
+            resolve(event.target.result);
+          };
+
+          request.onerror = (event) => {
+            console.error("Error getting records:", event.target.errorCode);
+            showToast("Error al cargar los registros de asistencia.", "error");
+            reject(event.target.errorCode);
+          };
+        });
+      }
+
+      async function renderAttendanceRecords() {
+        const records = await getAttendanceRecords();
+        attendanceRecordsBody.innerHTML = ""; // Limpiar tabla
+        if (records.length === 0) {
+          attendanceRecordsBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500">No hay registros de asistencia aún.</td></tr>`;
+          return;
+        }
+        records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); // Ordenar por fecha descendente
+
+        records.forEach((record) => {
+          const row = document.createElement("tr");
+          row.className = "hover:bg-gray-50";
+          const date = new Date(record.timestamp);
+          const formattedTime = date.toLocaleTimeString("es-ES", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          const formattedDate = date.toLocaleDateString("es-ES", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          });
+
+          row.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${
+                      record.employeeName
+                    }</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${
+                      record.employeeRole
+                    }</td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          record.type === "entrada"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }">
+                            ${
+                              record.type.charAt(0).toUpperCase() +
+                              record.type.slice(1)
+                            }
+                        </span>
+                    </td>
+                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">${formattedTime} (${formattedDate})</td>
+                `;
+          attendanceRecordsBody.appendChild(row);
+        });
+      }
+
+      // --- Lógica de la Aplicación ---
+
+      // Inicializar cámaras y IndexedDB al cargar la página
+      window.onload = async () => {
+        startCamera(videoRegister);
+        startCamera(videoAttendance);
+        await openDatabase();
+        renderAttendanceRecords();
+
+        if (!API_KEY) {
+          showToast(
+            "Por favor, configura tu API Key para usar la aplicación.",
+            "info"
+          );
+          apiKeyModal.classList.remove("hidden");
+        } else {
+          apiKeyInput.value = API_KEY;
+        }
+      };
+
+      // --- Event Listeners ---
+
+      // Abrir modal de API Key
+      openApiKeyModalBtn.addEventListener("click", () => {
+        apiKeyModal.classList.remove("hidden");
+        apiKeyInput.value = API_KEY || ""; // Cargar el valor actual si existe
+      });
+
+      // Cancelar configuración de API Key
+      cancelApiKeyBtn.addEventListener("click", () => {
+        apiKeyModal.classList.add("hidden");
+      });
+
+      // Guardar API Key
+      apiKeyForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        API_KEY = apiKeyInput.value.trim();
+        if (API_KEY) {
+          localStorage.setItem("attendance_app_api_key", API_KEY);
+          showToast("API Key guardada correctamente.", "success");
+          apiKeyModal.classList.add("hidden");
+        } else {
+          showToast("Por favor, ingresa una API Key válida.", "error");
+        }
+      });
+
+      // Capturar foto para registro
+      capturePhotoBtn.addEventListener("click", async () => {
+        toggleSpinner(registerSubmitBtn, registerSpinner, true);
+        showToast("Tomando foto...", "info");
+        capturedFaceFile = await capturePhoto(videoRegister, canvasRegister);
+        if (capturedFaceFile) {
+          showToast(
+            "Foto capturada. Ahora puedes registrar al empleado.",
+            "success"
+          );
+          registerSubmitBtn.removeAttribute("disabled"); // Habilitar botón de registro
+        } else {
+          showToast("No se pudo capturar la foto.", "error");
+          registerSubmitBtn.setAttribute("disabled", "true");
+        }
+        toggleSpinner(registerSubmitBtn, registerSpinner, false);
+      });
+
+      // Enviar formulario de registro de empleado
+      registerForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!API_KEY) {
+          showToast("Por favor, configura tu API Key primero.", "error");
+          apiKeyModal.classList.remove("hidden");
+          return;
+        }
+        if (!capturedFaceFile) {
+          showToast("Por favor, toma una foto del rostro primero.", "error");
+          return;
+        }
+
+        toggleSpinner(registerSubmitBtn, registerSpinner, true);
+
+        const formData = new FormData();
+        formData.append(
+          "full_name",
+          document.getElementById("employee-name").value
+        );
+        formData.append("role", document.getElementById("employee-role").value);
+        formData.append(
+          "email",
+          document.getElementById("employee-email").value
+        );
+        const password = document.getElementById("employee-password").value;
+        if (password) {
+          formData.append("password", password);
+        }
+        formData.append("face_image", capturedFaceFile);
+        // Solo añadir force_register si el checkbox está visible y marcado
+        if (
+          !forceRegisterOption.classList.contains("hidden") &&
+          forceRegisterCheckbox.checked
+        ) {
+          formData.append("force_register", "true");
+        } else {
+          formData.append("force_register", "false"); // Asegurarse de que siempre se envíe
+        }
+
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/apps/v1/${API_KEY}/register/`,
+            {
+              method: "POST",
+              body: formData,
+            }
+          );
+
+          const data = await response.json();
+
+          if (response.ok) {
+            showToast("Empleado registrado con éxito!", "success");
+            registerForm.reset();
+            capturedFaceFile = null;
+            registerSubmitBtn.setAttribute("disabled", "true");
+            forceRegisterOption.classList.add("hidden"); // Ocultar la opción de forzar registro
+            forceRegisterCheckbox.checked = false; // Resetear checkbox
+          } else {
+            const errorMessage =
+              data.detail ||
+              (data.errors
+                ? Object.values(data.errors).flat().join(", ")
+                : "Error desconocido al registrar.");
+            showToast(`Error: ${errorMessage}`, "error");
+
+            // Si el error es por rostro ya registrado, mostrar la opción de forzar registro
+            if (errorMessage.includes("Este rostro ya está registrado")) {
+              forceRegisterOption.classList.remove("hidden");
+            } else {
+              forceRegisterOption.classList.add("hidden"); // Ocultar si es otro tipo de error
+              forceRegisterCheckbox.checked = false; // Resetear checkbox
+            }
+          }
+        } catch (error) {
+          console.error("Error al registrar empleado:", error);
+          showToast("Error de conexión al registrar empleado.", "error");
+          forceRegisterOption.classList.add("hidden"); // Ocultar en caso de error de conexión
+          forceRegisterCheckbox.checked = false; // Resetear checkbox
+        } finally {
+          toggleSpinner(registerSubmitBtn, registerSpinner, false);
+        }
+      });
+
+      // --- Lógica de Asistencia (Entrada/Salida) ---
+
+      async function processAttendance(type) {
+        if (!API_KEY) {
+          showToast("Por favor, configura tu API Key primero.", "error");
+          apiKeyModal.classList.remove("hidden");
+          return;
+        }
+
+        currentAttendanceAction = type;
+        toggleSpinner(
+          type === "entrada" ? checkInBtn : checkOutBtn,
+          type === "entrada" ? checkInSpinner : checkOutSpinner,
+          true
+        );
+        attendanceStatusDiv.textContent = `Procesando ${type}...`;
+        showToast(`Tomando foto para ${type}...`, "info");
+
+        capturedFaceFile = await capturePhoto(
+          videoAttendance,
+          canvasAttendance
+        );
+        if (!capturedFaceFile) {
+          showToast("No se pudo capturar la foto para asistencia.", "error");
+          toggleSpinner(
+            type === "entrada" ? checkInBtn : checkOutBtn,
+            type === "entrada" ? checkInSpinner : checkOutSpinner,
+            false
+          );
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("face_image", capturedFaceFile);
+
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/apps/v1/${API_KEY}/face-login/`,
+            {
+              method: "POST",
+              body: formData,
+            }
+          );
+
+          const data = await response.json();
+          currentLoginAttemptId = data.login_attempt_id; // Capturar el ID del intento de login
+
+          if (response.ok) {
+            if (data.status === "success") {
+              confirmedUserFromSuccess = data.user;
+              identifiedUserName.textContent = `Hemos reconocido a ${data.user.full_name}.`;
+              // Mostrar la sección de pregunta inicial
+              initialConfirmationPrompt.classList.remove("hidden");
+              ambiguousMatchesSection.classList.add("hidden");
+              confirmPasswordForm.classList.add("hidden");
+              attendanceConfirmModal.classList.remove("hidden");
+              currentConfirmationStep = "initial_prompt";
+            } else if (data.status === "ambiguous_match") {
+              currentAmbiguousMatches = data.matches;
+              // Mostrar la sección de coincidencias ambiguas
+              initialConfirmationPrompt.classList.add("hidden");
+              ambiguousMatchesSection.classList.remove("hidden");
+              confirmPasswordForm.classList.add("hidden");
+              renderAmbiguousMatches();
+              attendanceConfirmModal.classList.remove("hidden");
+              currentConfirmationStep = "ambiguous_selection";
+            } else {
+              // no_match
+              attendanceStatusDiv.textContent = `Error: ${
+                data.detail || "Rostro no reconocido."
+              }`;
+              showToast(
+                data.detail || "Rostro no reconocido para asistencia.",
+                "error"
+              );
+            }
+          } else {
+            const errorMessage =
+              data.detail || "Error desconocido al verificar rostro.";
+            attendanceStatusDiv.textContent = `Error: ${errorMessage}`;
+            showToast(`Error: ${errorMessage}`, "error");
+          }
+        } catch (error) {
+          console.error("Error al verificar rostro para asistencia:", error);
+          attendanceStatusDiv.textContent =
+            "Error de conexión al verificar rostro.";
+          showToast("Error de conexión al verificar rostro.", "error");
+        } finally {
+          toggleSpinner(
+            type === "entrada" ? checkInBtn : checkOutBtn,
+            type === "entrada" ? checkInSpinner : checkOutSpinner,
+            false
+          );
+        }
+      }
+
+      checkInBtn.addEventListener("click", () => processAttendance("entrada"));
+      checkOutBtn.addEventListener("click", () => processAttendance("salida"));
+
+      // Renderizar lista de coincidencias ambiguas
+      function renderAmbiguousMatches() {
+        ambiguousMatchesList.innerHTML = "";
+        currentAmbiguousMatches.forEach((match) => {
+          const button = document.createElement("button");
+          button.className = `w-full text-left p-4 rounded-lg transition-all duration-200 bg-gray-100 hover:bg-gray-200 text-gray-800 mb-2`;
+          button.innerHTML = `<span class="font-semibold">${match.full_name}</span><br><span class="text-xs opacity-75">ID de usuario: ${match.id}</span>`;
+          button.addEventListener("click", () => {
+            selectedAmbiguousUser = match;
+            // Pasar a la sección de contraseña
+            initialConfirmationPrompt.classList.add("hidden");
+            ambiguousMatchesSection.classList.add("hidden");
+            confirmPasswordForm.classList.remove("hidden");
+            selectedUserDisplay.classList.remove("hidden");
+            selectedUserDisplay.textContent = `Has seleccionado: ${match.full_name}`;
+            passwordPromptMessage.textContent = `Por favor, ingresa tu contraseña para confirmar tu ${currentAttendanceAction}.`;
+            confirmPasswordInput.focus();
+            currentConfirmationStep = "password_input";
+          });
+          ambiguousMatchesList.appendChild(button);
+        });
+      }
+
+      // --- Lógica del Modal de Confirmación de Asistencia ---
+
+      // Event listener para "Sí, soy yo" (después de un match 'success')
+      confirmYesBtn.addEventListener("click", () => {
+        // Mostrar la sección de contraseña
+        initialConfirmationPrompt.classList.add("hidden");
+        ambiguousMatchesSection.classList.add("hidden");
+        confirmPasswordForm.classList.remove("hidden");
+        selectedUserDisplay.classList.remove("hidden");
+        selectedUserDisplay.textContent = `Perfil reconocido: ${confirmedUserFromSuccess.full_name}`;
+        passwordPromptMessage.textContent = `Por favor, ingresa tu contraseña para confirmar tu ${currentAttendanceAction}.`;
+        confirmPasswordInput.focus();
+        currentConfirmationStep = "password_input";
+      });
+
+      // Event listener para "No soy yo" (después de un match 'success')
+      confirmNoBtn.addEventListener("click", async () => {
+        // Cuando el usuario dice "No soy yo", no hay user_id ni password para enviar.
+        // Solo se envía el login_attempt_id y la decisión de feedback.
+        await sendFeedback("incorrecto", null, null); // user y password son null
+        closeAttendanceConfirmModal();
+        showToast(
+          "Feedback registrado. Por favor, intenta iniciar sesión con tu correo y contraseña.",
+          "info"
+        );
+        attendanceStatusDiv.textContent = "Intento de asistencia cancelado.";
+      });
+
+      // Event listener para "Ninguno de estos soy yo" (después de un match 'ambiguous')
+      notMeAmbiguousBtn.addEventListener("click", async () => {
+        // Similar al caso anterior, no hay user_id ni password asociados a una confirmación positiva.
+        await sendFeedback("incorrecto", null, null); // user y password son null
+        closeAttendanceConfirmModal();
+        showToast(
+          "Feedback registrado. Por favor, intenta iniciar sesión con tu correo y contraseña.",
+          "info"
+        );
+        attendanceStatusDiv.textContent = "Intento de asistencia cancelado.";
+      });
+
+      confirmPasswordForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        toggleSpinner(confirmSubmitBtn, confirmSpinner, true);
+
+        const password = confirmPasswordInput.value;
+        let userToConfirm = null;
+
+        if (confirmedUserFromSuccess) {
+          userToConfirm = confirmedUserFromSuccess;
+        } else if (selectedAmbiguousUser) {
+          userToConfirm = selectedAmbiguousUser;
+        }
+
+        if (!userToConfirm || !capturedFaceFile) {
+          showToast("Error: Faltan datos para la confirmación.", "error");
+          toggleSpinner(confirmSubmitBtn, confirmSpinner, false);
+          return;
+        }
+
+        // Aquí se envía el feedback 'correcto' con el user_id y password
+        await sendFeedback("correcto", userToConfirm, password);
+        toggleSpinner(confirmSubmitBtn, confirmSpinner, false);
+      });
+
+      cancelConfirmPasswordBtn.addEventListener("click", () => {
+        closeAttendanceConfirmModal();
+      });
+
+      // Función unificada para enviar feedback
+      async function sendFeedback(
+        feedback_decision,
+        user = null,
+        password = ""
+      ) {
+        const formData = new FormData();
+
+        // Solo añadir user_id y password si el feedback es 'correcto'
+        if (feedback_decision === "correcto" && user) {
+          formData.append("user_id", user.id);
+          formData.append("password", password);
+          // La imagen capturada es necesaria para actualizar el embedding
+          if (capturedFaceFile) {
+            formData.append("face_image", capturedFaceFile);
+          }
+        } else {
+          // Para feedback 'incorrecto', la imagen es opcional pero útil para el backend
+          // si queremos analizar por qué falló la detección.
+          if (capturedFaceFile) {
+            formData.append("face_image", capturedFaceFile);
+          }
+        }
+
+        formData.append("login_attempt_id", currentLoginAttemptId);
+        formData.append("feedback_decision", feedback_decision); // 'correcto' o 'incorrecto'
+
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/apps/v1/${API_KEY}/face-feedback/`,
+            {
+              method: "POST",
+              body: formData,
+            }
+          );
+
+          const data = await response.json();
+
+          if (response.ok) {
+            if (feedback_decision === "correcto") {
+              showToast(
+                `Asistencia de ${currentAttendanceAction} registrada para ${data.user.full_name}!`,
+                "success"
+              );
+              attendanceStatusDiv.textContent = `Bienvenido, ${
+                data.user.full_name
+              }! ${
+                currentAttendanceAction.charAt(0).toUpperCase() +
+                currentAttendanceAction.slice(1)
+              } registrada.`;
+
+              // Guardar registro en IndexedDB
+              await addAttendanceRecord({
+                employeeId: data.user.id,
+                employeeName: data.user.full_name,
+                employeeRole: data.user.role || "Empleado", // Asumiendo un rol por defecto si no viene
+                type: currentAttendanceAction,
+                timestamp: new Date().toISOString(),
+              });
+              renderAttendanceRecords(); // Actualizar la tabla
+            } else {
+              // feedback_decision === 'incorrecto'
+              showToast(
+                "Feedback de identificación incorrecta registrado.",
+                "info"
+              );
+            }
+            closeAttendanceConfirmModal();
+          } else {
+            const errorMessage =
+              data.detail || "Error al procesar el feedback.";
+            showToast(`Error de feedback: ${errorMessage}`, "error");
+          }
+        } catch (error) {
+          console.error("Error al enviar feedback:", error);
+          showToast("Error de conexión al enviar feedback.", "error");
+        }
+      }
+
+      function closeAttendanceConfirmModal() {
+        attendanceConfirmModal.classList.add("hidden");
+        confirmPasswordInput.value = "";
+        selectedAmbiguousUser = null;
+        confirmedUserFromSuccess = null;
+        capturedFaceFile = null;
+        currentAttendanceAction = "";
+        currentAmbiguousMatches = [];
+        currentLoginAttemptId = null; // Resetear el ID del intento de login
+        currentConfirmationStep = "";
+
+        // Ocultar todas las secciones del modal
+        initialConfirmationPrompt.classList.add("hidden");
+        ambiguousMatchesSection.classList.add("hidden");
+        confirmPasswordForm.classList.add("hidden");
+        selectedUserDisplay.classList.add("hidden"); // Asegurarse de que este también se oculte
+      }
+    </script>
+  </body>
+</html>

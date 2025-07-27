@@ -8,6 +8,8 @@ import {
   createApp,
   updateApp,
   deleteApp,
+  getEndUsersByApp,
+  deleteEndUser,
 } from "../../../services/appService.js";
 import {
   FaUserCircle,
@@ -16,9 +18,33 @@ import {
   FaCog,
   FaSignOutAlt,
   FaCopy,
+  FaEdit,
+  FaTrashAlt,
+  FaExclamationTriangle,
 } from "react-icons/fa";
-
+import Modal from "react-modal";
 import logo from "../../../assets/img/logo.svg";
+
+// Configuración para react-modal
+Modal.setAppElement("#root");
+
+const customModalStyles = {
+  content: {
+    top: "50%",
+    left: "50%",
+    right: "auto",
+    bottom: "auto",
+    marginRight: "-50%",
+    transform: "translate(-50%, -50%)",
+    maxWidth: "600px",
+    width: "90%",
+    borderRadius: "8px",
+    padding: "2rem",
+  },
+  overlay: {
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+  },
+};
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("perfil");
@@ -35,8 +61,13 @@ const Dashboard = () => {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    strictness: 0.6,
+    CONFIDENCE_THRESHOLD: 0.8,
+    FALLBACK_THRESHOLD: 0.6,
   });
+
+  // Nuevo estado para almacenar los usuarios finales por aplicación
+  const [endUsersByApp, setEndUsersByApp] = useState({});
+  const [isLoadingEndUsers, setIsLoadingEndUsers] = useState(false);
 
   const isTokenExpired = (token) => {
     try {
@@ -76,12 +107,26 @@ const Dashboard = () => {
     setIsLoading(false);
   }, [navigate]);
 
-  // Cargar las apps cuando se selecciona la pestaña
+  // Cargar las apps cuando se selecciona la pestaña de configuración
   useEffect(() => {
     if (activeTab === "configuracion") {
       fetchApps();
     }
   }, [activeTab]);
+
+  // Cargar los EndUsers cuando se selecciona la pestaña de usuarios
+  // y las apps ya están cargadas
+  useEffect(() => {
+    if (activeTab === "usuarios" && apps.length > 0) {
+      fetchAllEndUsers();
+    } else if (
+      activeTab === "usuarios" &&
+      apps.length === 0 &&
+      !isLoadingApps
+    ) {
+      setEndUsersByApp({});
+    }
+  }, [activeTab, apps, isLoadingApps]);
 
   if (isLoading) {
     return (
@@ -95,7 +140,6 @@ const Dashboard = () => {
     return `<p class="text-red-500">No se pudo cargar el usuario. Por favor, inicia sesión nuevamente.</p>`;
   }
 
-  // Apps data fetching
   // Función para cargar las aplicaciones
   const fetchApps = async () => {
     setIsLoadingApps(true);
@@ -104,12 +148,30 @@ const Dashboard = () => {
       setApps(appsData);
     } catch (error) {
       console.error("Error loading apps:", error);
+      toast.error("Error al cargar las aplicaciones.");
     } finally {
       setIsLoadingApps(false);
     }
   };
 
-  // Función para manejar el envío del formulario
+  // Función para cargar los EndUsers de todas las aplicaciones
+  const fetchAllEndUsers = async () => {
+    setIsLoadingEndUsers(true);
+    const newEndUsersByApp = {};
+    for (const app of apps) {
+      try {
+        const usersData = await getEndUsersByApp(app.id);
+        newEndUsersByApp[app.id] = usersData;
+      } catch (error) {
+        console.error(`Error loading end users for app ${app.name}:`, error);
+        toast.error(`Error al cargar usuarios para la aplicación: ${app.name}`);
+      }
+    }
+    setEndUsersByApp(newEndUsersByApp);
+    setIsLoadingEndUsers(false);
+  };
+
+  // Función para manejar el envío del formulario de apps
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -120,11 +182,15 @@ const Dashboard = () => {
         await createApp(formData);
         toast.success("Aplicación creada correctamente");
       }
-      fetchApps();
+      fetchApps(); // Refrescar la lista de apps
       setIsModalOpen(false);
       setCurrentApp(null);
-      setFormData({ name: "", description: "", strictness: 0.6 });
-      console.log(setFormData);
+      setFormData({
+        name: "",
+        description: "",
+        CONFIDENCE_THRESHOLD: 0.8,
+        FALLBACK_THRESHOLD: 0.6,
+      });
     } catch (error) {
       toast.error("Error al guardar la aplicación");
       console.error("Error saving app:", error);
@@ -137,13 +203,14 @@ const Dashboard = () => {
     setFormData({
       name: app.name,
       description: app.description,
-      strictness: app.strictness,
+      CONFIDENCE_THRESHOLD: app.CONFIDENCE_THRESHOLD,
+      FALLBACK_THRESHOLD: app.FALLBACK_THRESHOLD,
     });
     setIsModalOpen(true);
   };
 
   // Función para eliminar una app
-  const handleDelete = async (id) => {
+  const handleDeleteApp = async (id) => {
     if (
       window.confirm("¿Estás seguro de que quieres eliminar esta aplicación?")
     ) {
@@ -158,11 +225,28 @@ const Dashboard = () => {
     }
   };
 
-  const users = [
-    { id: 1, name: "María López", role: "Administrador", lastLogin: "Hoy" },
-    { id: 2, name: "Javier Gómez", role: "Usuario", lastLogin: "Ayer" },
-    { id: 3, name: "Laura Torres", role: "Usuario", lastLogin: "Hace 3 días" },
-  ];
+  // Función para eliminar un EndUser
+  const handleDeleteEndUser = async (appId, userId, userName) => {
+    if (
+      window.confirm(
+        `¿Estás seguro de que quieres eliminar al usuario ${userName}?`
+      )
+    ) {
+      try {
+        await deleteEndUser(appId, userId);
+        toast.success(`Usuario ${userName} eliminado correctamente`);
+        // Refrescar solo los usuarios de esa app
+        const updatedUsers = await getEndUsersByApp(appId);
+        setEndUsersByApp((prev) => ({
+          ...prev,
+          [appId]: updatedUsers,
+        }));
+      } catch (error) {
+        toast.error(`Error al eliminar al usuario ${userName}`);
+        console.error("Error deleting end user:", error);
+      }
+    }
+  };
 
   const copyToClipboard = (text) => {
     navigator.clipboard
@@ -213,7 +297,7 @@ const Dashboard = () => {
       >
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center space-x-2">
-            <img src={logo} className="w-8 h-8 text-indigo-600" />
+            <img src={logo} className="w-8 h-8 text-indigo-600" alt="Logo" />
             <span className="font-semibold text-lg">
               Face<span className=" text-indigo-600">Auth</span>
             </span>
@@ -283,7 +367,11 @@ const Dashboard = () => {
         {/* Mobile Header */}
         <header className="flex items-center justify-between p-4 bg-white shadow md:hidden">
           <h1 className="flex text-xl font-bold">
-            <img src={logo} className="w-6 h-6 mr-1 text-indigo-600" />
+            <img
+              src={logo}
+              className="w-6 h-6 mr-1 text-indigo-600"
+              alt="Logo"
+            />
             Face<span className=" text-indigo-600">Auth</span>
           </h1>
           <button onClick={() => setSidebarOpen(true)}>
@@ -371,46 +459,104 @@ const Dashboard = () => {
             </section>
           )}
 
-          {/* Tab: Usuarios */}
+          {/* Tab: Usuarios (Ahora con listado por aplicación) */}
           {activeTab === "usuarios" && (
             <section>
               <h2 className="text-2xl font-bold mb-6">
-                Usuarios de mi Aplicación
+                Usuarios de mis Aplicaciones
               </h2>
-              <div className="bg-white rounded-lg shadow overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Nombre
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Rol
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Último acceso
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {users.map((u) => (
-                      <tr key={u.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {u.name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                            {u.role}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {u.lastLogin}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {isLoadingEndUsers ? (
+                <div className="flex justify-center items-center h-40">
+                  <p>Cargando usuarios...</p>
+                </div>
+              ) : apps.length === 0 ? (
+                <p className="text-gray-600">
+                  Aún no tienes aplicaciones registradas para mostrar usuarios.
+                  Ve a la pestaña "Aplicaciones" para crear una.
+                </p>
+              ) : (
+                <div className="space-y-8">
+                  {apps.map((app) => (
+                    <div
+                      key={app.id}
+                      className="bg-white rounded-lg shadow p-6"
+                    >
+                      <h3 className="text-xl font-semibold mb-4">
+                        Aplicación: {app.name}
+                      </h3>
+                      {endUsersByApp[app.id] &&
+                      endUsersByApp[app.id].length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Nombre Completo
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Correo Electrónico
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Rol
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Registrado
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Acciones
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {endUsersByApp[app.id].map((endUser) => (
+                                <tr key={endUser.id}>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {endUser.full_name}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {endUser.email}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                      {endUser.role}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {format(
+                                      parseISO(endUser.created_at),
+                                      "dd/MM/yyyy",
+                                      { locale: es }
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <button
+                                      onClick={() =>
+                                        handleDeleteEndUser(
+                                          app.id,
+                                          endUser.id,
+                                          endUser.full_name
+                                        )
+                                      }
+                                      className="text-red-600 hover:text-red-900 ml-4"
+                                      title="Eliminar usuario"
+                                    >
+                                      <FaTrashAlt />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="text-gray-600">
+                          No hay usuarios registrados para esta aplicación.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
@@ -424,7 +570,12 @@ const Dashboard = () => {
                 <button
                   onClick={() => {
                     setCurrentApp(null);
-                    setFormData({ name: "", description: "", strictness: 0.6 });
+                    setFormData({
+                      name: "",
+                      description: "",
+                      CONFIDENCE_THRESHOLD: 0.8,
+                      FALLBACK_THRESHOLD: 0.6,
+                    });
                     setIsModalOpen(true);
                   }}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition duration-150"
@@ -432,15 +583,21 @@ const Dashboard = () => {
                   + Nueva Aplicación
                 </button>
               </div>
-              <p className="mb-5">
+              <p className="mb-5 text-gray-700">
                 Solicita y consulta una API Key para integrar los servicios de
-                FaceAuth en tus aplicaciones
+                FaceAuth en tus aplicaciones. Define los umbrales de confianza
+                para el reconocimiento facial.
               </p>
 
               {isLoadingApps ? (
                 <div className="flex justify-center items-center h-40">
                   <p>Cargando aplicaciones...</p>
                 </div>
+              ) : apps.length === 0 ? (
+                <p className="text-gray-600">
+                  Aún no tienes aplicaciones registradas. Haz clic en "+ Nueva
+                  Aplicación" para empezar.
+                </p>
               ) : (
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                   {apps.map((app) => (
@@ -452,38 +609,52 @@ const Dashboard = () => {
                       <p className="text-sm text-gray-600 mt-1 line-clamp-2">
                         {app.description || "Sin descripción"}
                       </p>
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className="text-xs px-2 py-1 bg-gray-100 rounded">
-                          Nivel: {app.strictness.toFixed(1)}
-                        </span>
+                      <div className="mt-3 text-sm text-gray-700">
+                        <p>
+                          Umbral de Confianza:{" "}
+                          <span className="font-semibold">
+                            {(app.CONFIDENCE_THRESHOLD * 100).toFixed(0)}%
+                          </span>
+                        </p>
+                        <p>
+                          Umbral de Respaldo:{" "}
+                          <span className="font-semibold">
+                            {(app.FALLBACK_THRESHOLD * 100).toFixed(0)}%
+                          </span>
+                        </p>
+                      </div>
+                      <div className="mt-4 flex items-center justify-between">
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleEdit(app)}
-                            className="text-xs text-indigo-600 hover:text-indigo-800"
+                            className="text-indigo-600 hover:text-indigo-800"
+                            title="Editar aplicación"
                           >
-                            Editar
+                            <FaEdit />
                           </button>
                           <button
-                            onClick={() => handleDelete(app.id)}
-                            className="text-xs text-red-600 hover:text-red-800"
+                            onClick={() => handleDeleteApp(app.id)}
+                            className="text-red-600 hover:text-red-800"
+                            title="Eliminar aplicación"
                           >
-                            Eliminar
+                            <FaTrashAlt />
                           </button>
                         </div>
-                      </div>
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-gray-500">Token:</span>
+                        <div className="flex items-center">
+                          <span className="text-xs text-gray-500 mr-2">
+                            Token:
+                          </span>
                           <button
                             onClick={() => copyToClipboard(app.token)}
-                            className="text-xs text-indigo-600 hover:text-indigo-800 hover:cursor-pointer flex items-center"
+                            className="text-indigo-600 hover:text-indigo-800 hover:cursor-pointer flex items-center text-sm"
+                            title="Copiar token"
                           >
                             <FaCopy className="mr-1" /> Copiar
                           </button>
                         </div>
-                        <div className="text-xs font-mono text-gray-700 truncate mt-1">
-                          {app.token}
-                        </div>
+                      </div>
+                      <div className="text-xs font-mono text-gray-700 truncate mt-2 p-2 bg-gray-50 rounded-md border border-gray-200">
+                        {app.token}
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
                         Creada: {format(parseISO(app.created_at), "dd/MM/yyyy")}
@@ -494,83 +665,116 @@ const Dashboard = () => {
               )}
 
               {/* Modal para crear/editar aplicaciones */}
-              {isModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                  <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                    <h3 className="text-lg font-semibold mb-4">
-                      {currentApp ? "Editar Aplicación" : "Nueva Aplicación"}
-                    </h3>
-                    <form onSubmit={handleSubmit}>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Nombre
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.name}
-                            onChange={(e) =>
-                              setFormData({ ...formData, name: e.target.value })
-                            }
-                            className="w-full px-3 py-2 border rounded-md"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Descripción
-                          </label>
-                          <textarea
-                            value={formData.description}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                description: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 border rounded-md"
-                            rows="3"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Nivel de Rigurosidad
-                          </label>
-                          <select
-                            value={formData.strictness}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                strictness: parseFloat(e.target.value),
-                              })
-                            }
-                            className="w-full px-3 py-2 border rounded-md"
-                          >
-                            <option value="0.4">Bajo (0.4)</option>
-                            <option value="0.6">Medio (0.6)</option>
-                            <option value="0.8">Alto (0.8)</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="mt-6 flex justify-end space-x-3">
-                        <button
-                          type="button"
-                          onClick={() => setIsModalOpen(false)}
-                          className="px-4 py-2 border rounded-md hover:bg-gray-50"
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          type="submit"
-                          className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-                        >
-                          {currentApp ? "Actualizar" : "Crear"}
-                        </button>
-                      </div>
-                    </form>
+              <Modal
+                isOpen={isModalOpen}
+                onRequestClose={() => setIsModalOpen(false)}
+                style={customModalStyles}
+                contentLabel={
+                  currentApp ? "Editar Aplicación" : "Nueva Aplicación"
+                }
+              >
+                <h3 className="text-xl font-semibold mb-4">
+                  {currentApp ? "Editar Aplicación" : "Nueva Aplicación"}
+                </h3>
+                <form onSubmit={handleSubmit}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nombre
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) =>
+                          setFormData({ ...formData, name: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Descripción
+                      </label>
+                      <textarea
+                        value={formData.description}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            description: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        rows="3"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Umbral de Confianza (0.0 - 1.0)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.0"
+                        max="1.0"
+                        value={formData.CONFIDENCE_THRESHOLD}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            CONFIDENCE_THRESHOLD: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        required
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Define la similitud mínima para un "match" directo. Un
+                        valor más alto es más estricto.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Umbral de Respaldo (0.0 - 1.0)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.0"
+                        max="1.0"
+                        value={formData.FALLBACK_THRESHOLD}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            FALLBACK_THRESHOLD: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        required
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Define la similitud para posibles coincidencias
+                        (ambiguas). Debe ser igual o menor al Umbral de
+                        Confianza.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition duration-150"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition duration-150"
+                    >
+                      {currentApp ? "Actualizar" : "Crear"}
+                    </button>
+                  </div>
+                </form>
+              </Modal>
             </section>
           )}
         </div>
