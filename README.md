@@ -1,8 +1,18 @@
-# facial_auth_frontend
+<center>
+  <h1>facial_auth_frontend</h1>
+  <img width="250" height="100" alt="Logo de FaceAuth" src="https://github.com/user-attachments/assets/8b84783e-681a-4e2d-a063-dadb346616ee" />
+</center>
 
 ## 🧾 Descripción oficial del Proyecto
 
 "Somos una alternativa para la autenticación de usuarios, empleamos reconocimiento facial para mejorar tu sistema de registro o inicio de sesiones."
+---
+
+## Autores
+
+* **Adrian Caiza**
+* **Erick Nuñez**
+* **Jhonny Villanueva M.**
 
 ---
 
@@ -10,15 +20,70 @@
 
 Este proyecto frontend está desarrollado con las siguientes tecnologías:
 
-* **React 19:** Última versión de la librería base para construir interfaces de usuario.
-* **Vite:** Un bundler de próxima generación para un desarrollo web más rápido.
-* **TailwindCSS:** Un framework CSS altamente personalizable para estilos.
-* **Axios:** Cliente HTTP basado en promesas para realizar llamadas a la API del backend.
-* **React Router DOM:** Para manejar la navegación entre diferentes vistas de la aplicación (Single Page Application - SPA).
-* **React Hook Form:** Para la gestión eficiente de formularios.
-* **React Toastify:** Para mostrar notificaciones emergentes.
-* **Date-fns:** Utilidades para trabajar con fechas.
+| Tecnología       | Descripción                              |
+|------------------|------------------------------------------|
+| React            | Librería principal para la UI            |
+| Vite             | Bundler rápido para desarrollo moderno   |
+| Tailwind CSS     | Framework de estilos utility-first       |
+| Axios            | Cliente HTTP para conexión con backend   |
+| React Router DOM | Manejo de rutas en SPA                   |
+| React Toastify   | Notificaciones flotantes                 |
+| React Hook Form  | Manejo eficiente de formularios          |
+| Date-fns         | Utilidades para trabajar con fechas      |
 
+---
+
+## En Acción: Vistazo al Sistema
+
+A continuación, se presentan las capturas de pantalla clave que ilustran el funcionamiento y las características de nuestro sistema.
+
+### Inicio
+
+Esta captura muestra la pantalla principal al iniciar la aplicación.
+
+<center>
+  <img width="800" alt="Captura de Pantalla - Pantalla de Inicio del Sistema" src="https://github.com/user-attachments/assets/a79ea6b0-4b4c-45c9-808c-8573f7500d6f" />
+</center>
+
+### Características Principales
+
+Aquí se destacan las funcionalidades clave que ofrece el sistema.
+
+<center>
+  <img width="800" alt="Captura de Pantalla - Características Principales" src="https://github.com/user-attachments/assets/a6638f5f-b312-4690-9180-012d998d69da" />
+</center>
+
+### Funcionamiento
+
+Esta imagen ilustra un flujo de trabajo o un proceso central del sistema.
+
+<center>
+  <img width="800" alt="Captura de Pantalla - Demostración del Funcionamiento del Sistema" src="https://github.com/user-attachments/assets/4e150ef1-2140-44b5-807c-90496215a0cb" />
+</center>
+
+### Login
+
+Una vista de la pantalla de inicio de sesión o autenticación del usuario.
+
+<center>
+  <img width="800" alt="Captura de Pantalla - Pantalla de Login/Inicio de Sesión" src="https://github.com/user-attachments/assets/61946a4d-7f67-40b3-876f-dea963cf12c2" />
+</center>
+
+## Planes y Precios
+
+Esta imagen muestra opciones de planes y los detalles de nuestros precios.
+
+<center>
+  <img width="800" alt="Captura de Pantalla - Planes y Precios" src="https://github.com/user-attachments/assets/bcdefda5-b689-4feb-959b-0785b5b09e23" />
+</center>
+
+## Contactos
+
+Aquí se muestra la seccion de contacto.
+
+<center>
+  <img width="800" alt="Captura de Pantalla - Información de Contacto" src="https://github.com/user-attachments/assets/cddd4a71-4f80-4e1c-bd5a-38e65f600c20" />
+</center>
 ---
 
 ## 📁 Estructura Principal del Proyecto
