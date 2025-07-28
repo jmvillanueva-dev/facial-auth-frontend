@@ -38,7 +38,7 @@ const Auth = () => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
-  const [hasValidPhoto, setHasValidPhoto] = useState(false);
+  const [hasValidPhoto, setHasValidPhoto] = useState(false); // State to track if a valid photo has been taken
   const [imageQuality, setImageQuality] = useState({
     hasGoodLighting: false,
     isCentered: false,
@@ -76,6 +76,7 @@ const Auth = () => {
   });
 
   const faceImage = watch("face_image");
+  // Effect to update hasValidPhoto based on faceImage presence
   useEffect(() => {
     if (!faceImage || faceImage.length === 0) {
       setHasValidPhoto(false);
@@ -84,6 +85,10 @@ const Auth = () => {
         isCentered: false,
         isClear: false,
       });
+    } else {
+      // If faceImage exists, assume it's valid for now, until quality check is done
+      // The capturePhoto function already sets hasValidPhoto to true on success
+      setHasValidPhoto(true);
     }
   }, [faceImage]);
 
@@ -102,7 +107,7 @@ const Auth = () => {
 
   const startCamera = async () => {
     try {
-      stopCamera();
+      stopCamera(); // Ensure any existing camera stream is stopped
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -150,10 +155,12 @@ const Auth = () => {
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+      // Simulate quality checks for demonstration purposes
+      // In a real application, you would use a facial detection library
       const qualityCheck = {
-        hasGoodLighting: Math.random() > 0.1, 
-        isCentered: Math.random() > 0.1,
-        isClear: Math.random() > 0.1,
+        hasGoodLighting: Math.random() > 0.1, // 90% chance of good lighting
+        isCentered: Math.random() > 0.1, // 90% chance of being centered
+        isClear: Math.random() > 0.1, // 90% chance of being clear
       };
 
       setImageQuality(qualityCheck);
@@ -166,8 +173,8 @@ const Auth = () => {
         canvas.toBlob(
           (blob) => {
             const file = new File([blob], "face.jpg", { type: "image/jpeg" });
-            setValue("face_image", [file]);
-            setHasValidPhoto(true);
+            setValue("face_image", [file]); // Set the file in react-hook-form
+            setHasValidPhoto(true); // Mark photo as valid
             toast.success("Foto capturada con éxito");
           },
           "image/jpeg",
@@ -177,8 +184,8 @@ const Auth = () => {
         toast.warning(
           "La foto no cumple con los requisitos de calidad. Intenta de nuevo."
         );
-        setHasValidPhoto(false);
-        setValue("face_image", null);
+        setHasValidPhoto(false); // Mark photo as invalid
+        setValue("face_image", null); // Clear the photo from the form
       }
     }
   };
@@ -190,7 +197,10 @@ const Auth = () => {
     formData.append("full_name", data.name);
     formData.append("password", data.password);
     formData.append("password_conf", data.confirmPassword);
-    formData.append("face_image", data.face_image[0]);
+    // Ensure face_image is appended only if it exists
+    if (data.face_image && data.face_image.length > 0) {
+      formData.append("face_image", data.face_image[0]);
+    }
     formData.append("force_register", data.force_register ? "true" : "false");
 
     try {
@@ -205,6 +215,7 @@ const Auth = () => {
       setIsLogin(true);
       setShowForceRegisterOption(false);
       setValue("force_register", false);
+      setHasValidPhoto(false); // Reset photo state after successful registration
     } catch (err) {
       if (err.response) {
         const { data } = err.response;
@@ -424,7 +435,6 @@ const Auth = () => {
     setCurrentModalStep("initial_prompt");
   };
 
-  
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 relative">
       {/* Botón para volver al Home */}
@@ -663,8 +673,16 @@ const Auth = () => {
 
           <button
             type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition duration-150"
-            disabled={isProcessing}
+            // Modified disabled prop:
+            // If it's a login form, disable only if processing.
+            // If it's a registration form, disable if processing OR if no valid photo has been taken.
+            disabled={isProcessing || (!isLogin && !hasValidPhoto)}
+            className={`w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition duration-150
+              ${
+                isProcessing || (!isLogin && !hasValidPhoto)
+                  ? "opacity-50 cursor-not-allowed"
+                  : ""
+              }`}
           >
             {isProcessing ? (
               <span className="flex items-center justify-center">
@@ -716,8 +734,8 @@ const Auth = () => {
         onRequestClose={() => {
           stopCamera();
           setCameraModalOpen(false);
-          setHasValidPhoto(false);
-          setValue("face_image", null);
+          setHasValidPhoto(false); // Ensure photo state is reset on modal close
+          setValue("face_image", null); // Clear the photo from the form
         }}
         style={customStyles}
         contentLabel="Captura de rostro"
@@ -811,6 +829,7 @@ const Auth = () => {
                   onClick={() => {
                     setCameraModalOpen(false);
                     setValue("face_image", null);
+                    setHasValidPhoto(false); // Ensure photo state is reset on cancel
                   }}
                   className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 px-4 rounded-md"
                 >
@@ -924,53 +943,64 @@ const Auth = () => {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const userToConfirm = confirmedUser || selectedAmbiguousUser;
-                  handleFeedbackSubmit(
-                    "correcto",
-                    userToConfirm,
-                    feedbackPassword
-                  );
+                  if (userToConfirm) {
+                    handleFeedbackSubmit(
+                      "correcto",
+                      userToConfirm,
+                      feedbackPassword
+                    );
+                  }
                 }}
-                className="space-y-4"
               >
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="feedback-password"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Contraseña
                   </label>
                   <input
                     type="password"
+                    id="feedback-password"
                     value={feedbackPassword}
                     onChange={(e) => setFeedbackPassword(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-md border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
                     required
                   />
                 </div>
-                <button
-                  type="submit"
-                  disabled={isProcessing}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  {isProcessing
-                    ? "Confirmando..."
-                    : "Confirmar y Iniciar Sesión"}
-                </button>
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={closeAllModalsAndResetState}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 px-4 rounded-md text-gray-800 transition duration-150"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isProcessing}
+                    className={`flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md transition duration-150 ${
+                      isProcessing ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
+                  >
+                    {isProcessing ? "Verificando..." : "Confirmar"}
+                  </button>
+                </div>
               </form>
-              <button
-                onClick={() =>
-                  handleFeedbackSubmit(
-                    "incorrecto",
-                    confirmedUser || selectedAmbiguousUser,
-                    ""
-                  )
-                }
-                className="w-full text-center text-sm text-red-600 hover:text-red-800 transition duration-150"
-              >
-                No soy este perfil
-              </button>
             </div>
           )}
       </Modal>
-
-      <ToastContainer position="top-center" autoClose={3000} />
+      <ToastContainer
+        position="bottom-right"
+        autoClose={3000}
+        hideProgressBar
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
     </div>
   );
 };

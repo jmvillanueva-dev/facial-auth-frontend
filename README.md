@@ -1,7 +1,7 @@
-<h1 align="center">Facial_auth_frontend</h1>
+<h1 align="center">Repositorio FaceAuth - Sistema de Reconocimiento Facial</h1>
 
 <p align="center">
-  <img width="400" height="150" alt="Logo de FaceAuth" src="https://github.com/user-attachments/assets/8b84783e-681a-4e2d-a063-dadb346616ee" />
+  <img width="400"  alt="Logo de FaceAuth" src="https://i.postimg.cc/Pr1rRvpW/Frontend.png" />
 </p>
 
 ---
