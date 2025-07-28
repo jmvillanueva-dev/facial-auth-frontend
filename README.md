@@ -1,18 +1,14 @@
-<center>
-  <h1>facial_auth_frontend</h1>
-  <img width="250" height="100" alt="Logo de FaceAuth" src="https://github.com/user-attachments/assets/8b84783e-681a-4e2d-a063-dadb346616ee" />
-</center>
+<h1 align="center">Facial_auth_frontend</h1>
+
+<p align="center">
+  <img width="400" height="150" alt="Logo de FaceAuth" src="https://github.com/user-attachments/assets/8b84783e-681a-4e2d-a063-dadb346616ee" />
+</p>
+
+---
 
 ## 🧾 Descripción oficial del Proyecto
 
 "Somos una alternativa para la autenticación de usuarios, empleamos reconocimiento facial para mejorar tu sistema de registro o inicio de sesiones."
----
-
-## Autores
-
-* **Adrian Caiza**
-* **Erick Nuñez**
-* **Jhonny Villanueva M.**
 
 ---
 
@@ -136,3 +132,11 @@ Esto iniciará la aplicación en tu navegador, generalmente en `http://localhost
 ---
 
 * Explorar los archivos del código fuente (`src/`) para comprender la implementación detallada.
+
+---
+
+## Autores
+
+* **Adrian Caiza**
+* **Erick Nuñez**
+* **Jhonny Villanueva M.**
